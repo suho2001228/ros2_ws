@@ -7,3 +7,6 @@ https://youtu.be/iDiW0ynom-Y
 
 ## psub1
 https://youtu.be/6V1NM3RRR6Q
+
+## camera2
+https://youtu.be/o98SP5xf2uY
