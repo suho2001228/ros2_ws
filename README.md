@@ -10,3 +10,7 @@ https://youtu.be/6V1NM3RRR6Q
 
 ## camera2
 https://youtu.be/o98SP5xf2uY
+
+## dxl_wsl
+### dxl_wsl + camara2-2 동시 실행 
+https://youtu.be/n89SJwtn7rQ
