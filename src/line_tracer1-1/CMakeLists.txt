@@ -19,12 +19,18 @@ find_package(OpenCV REQUIRED)
 
 add_executable(pub_jetson src/pub_jetson.cpp)
 ament_target_dependencies(pub_jetson rclcpp sensor_msgs cv_bridge OpenCV)
+
 add_executable(sub_wsl src/sub_wsl.cpp)
-ament_target_dependencies(sub_wsl rclcpp sensor_msgs cv_bridge OpenCV)
+ament_target_dependencies(sub_wsl rclcpp sensor_msgs std_msgs cv_bridge OpenCV)
+target_link_libraries(sub_wsl ${OpenCV_LIBS})
+
+add_executable(pub_wsl src/pub_wsl.cpp)
+ament_target_dependencies(pub_wsl rclcpp std_msgs geometry_msgs)
 
 install(TARGETS
 pub_jetson
 sub_wsl
+pub_wsl
 DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
