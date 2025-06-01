@@ -3,12 +3,11 @@
 #include <std_msgs/msg/int32.hpp>
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.h>
-#include <chrono> 
+using std::placeholders::_1;
 
-cv::Point main_point(-1, -1); // 이전 중심점
-rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr error_pub;
-
-void image_callback(const sensor_msgs::msg::CompressedImage::ConstSharedPtr msg) {
+void image_callback(cv::Point& main_point, 
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr error_pub,
+    const sensor_msgs::msg::CompressedImage::ConstSharedPtr msg) {
     // Compressed 이미지 디코딩
     cv::Mat frame = cv::imdecode(cv::Mat(msg->data), cv::IMREAD_COLOR);
     if (frame.empty()) return;
@@ -40,11 +39,11 @@ void image_callback(const sensor_msgs::msg::CompressedImage::ConstSharedPtr msg)
     // 중심 기준점 (첫 프레임 or 이전 중심점)
     if (main_point.x < 0) {
         main_point = cv::Point(binary.cols / 2, binary.rows - 1);
+        // RCLCPP_INFO(rclcpp::get_logger("line_tracer"), "if문 실행");
     }
 
     for (int i = 1; i < num; ++i) {
         int area = stats.at<int>(i, cv::CC_STAT_AREA);
-        // RCLCPP_INFO(rclcpp::get_logger("line_tracer"), "%d번째 면적: %d", i, area);
         if (area < 100) continue;
 
         cv::Point center(
@@ -59,7 +58,7 @@ void image_callback(const sensor_msgs::msg::CompressedImage::ConstSharedPtr msg)
         }
 
         cv::Rect obj(
-            stats.at<int>(i, cv::CC_STAT_LEFT),
+            stats.at<int>(i, cv::CC_STAT_LEFT), 
             stats.at<int>(i, cv::CC_STAT_TOP),
             stats.at<int>(i, cv::CC_STAT_WIDTH),
             stats.at<int>(i, cv::CC_STAT_HEIGHT)
@@ -70,36 +69,25 @@ void image_callback(const sensor_msgs::msg::CompressedImage::ConstSharedPtr msg)
     }
 
     cv::cvtColor(binary, output, cv::COLOR_GRAY2BGR);
-    
+
     for (size_t i = 0; i < objects.size(); ++i) {
-        cv::Scalar color;
-        if (static_cast<int>(i) == closest_idx) {
-            color = cv::Scalar(0, 0, 255);  // 빨간색 
-        } 
-        else {
-            color = cv::Scalar(255, 0, 0);  // 파란색
-        }
+        cv::Scalar color = (static_cast<int>(i) == closest_idx) ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 0, 0);
         cv::rectangle(output, objects[i], color, 2);
         cv::circle(output, centers[i], 5, color, -1);
     }
 
     int error = 0;
     if (closest_idx >= 0) {
-    main_point = centers[closest_idx];
-    error = (output.cols / 2) - main_point.x;
+        main_point = centers[closest_idx];
+        error = (output.cols / 2) - main_point.x;
 
-    std_msgs::msg::Int32 err_msg;
-    err_msg.data = error;
-    error_pub->publish(err_msg);
+        std_msgs::msg::Int32 err_msg;
+        err_msg.data = error;
+        error_pub->publish(err_msg);
 
-    static std::chrono::steady_clock::time_point prev_time;
-    auto curr_time = std::chrono::steady_clock::now();
-    if (prev_time.time_since_epoch().count() > 0) {
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(curr_time - prev_time).count();
-        RCLCPP_INFO(rclcpp::get_logger("line_tracer"), "error: %d, time: %ld ms", error, duration);
+        RCLCPP_INFO(rclcpp::get_logger("line_tracer"), "Error: %d", error);
     }
-    prev_time = curr_time;
-}
+    RCLCPP_INFO(rclcpp::get_logger("line_tracer"), "Point.x : %d, Point.y : %d", main_point.x, main_point.y);
 
     cv::imshow("Detection ROI", output);
     cv::waitKey(1);
@@ -107,15 +95,19 @@ void image_callback(const sensor_msgs::msg::CompressedImage::ConstSharedPtr msg)
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
+    cv::Point main_point(-1, -1); // 이전 중심점
     auto node = rclcpp::Node::make_shared("line_tracer");
-
     auto qos = rclcpp::QoS(rclcpp::KeepLast(10)).best_effort();
 
-    auto sub = node->create_subscription<sensor_msgs::msg::CompressedImage>(
-        "image/compressed", qos, image_callback);
-
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr error_pub;
     error_pub = node->create_publisher<std_msgs::msg::Int32>("line_tracer/error", qos);
 
+    std::function<void(const sensor_msgs::msg::CompressedImage::SharedPtr msg)> fn;
+    fn = std::bind(image_callback, main_point, error_pub, _1);
+    auto sub = node->create_subscription<sensor_msgs::msg::CompressedImage>(
+        "image/compressed", qos, fn);
+
+    
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;
