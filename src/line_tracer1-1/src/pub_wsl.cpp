@@ -3,20 +3,17 @@
 #include "geometry_msgs/msg/vector3.hpp" // dxl 작동 토픽 보내야됨 
 #include <memory>
 #include <functional>
-// #include "line_tracer1-1/dxl.hpp"
 using std::placeholders::_1;
-
-geometry_msgs::msg::Vector3 vel;
 
 void error_callback(rclcpp::Node::SharedPtr node, 
     rclcpp::Publisher<geometry_msgs::msg::Vector3>::SharedPtr mypub,
+    geometry_msgs::msg::Vector3 vel,
     const std_msgs::msg::Int32::SharedPtr msg){
 
     int error = msg->data;
 
-    rclcpp::WallRate loop_rate(20.0); // 50ms에 한번씩 실행
+    // rclcpp::WallRate loop_rate(20.0); // 50ms에 한번씩 실행
 
-    int vel1, vel2;
     int baseSpeed = 100; // 기본 직진 속도 
     float pGain = 0.15; // P 제어 계수 , 반응이 느리면 p값 증가 / 불안정하면 p값 감소 
     int maxSpeed = 200; // 최대 바퀴 속도 
@@ -34,19 +31,19 @@ void error_callback(rclcpp::Node::SharedPtr node,
     오른쪽 바퀴는 속도를 줄여야함. vel2 = - (baseSpeed + pGain * error)
     (에러값이 음수이므로 vel2의 절대값은 줄어들음)
     */
-    vel1 = baseSpeed - pGain * error;
-    vel2 = -(baseSpeed + pGain * error);
+    vel.x = baseSpeed - pGain * error;
+    vel.y = -(baseSpeed + pGain * error);
 
-    vel1 = std::max(-maxSpeed, std::min(maxSpeed, vel1)); // 최대 바퀴 속도 이상으로 못돌게 설정.
-    vel2 = std::max(-maxSpeed, std::min(maxSpeed, vel2));
+    vel.x = std::max(-maxSpeed, std::min(maxSpeed, (int)vel.x)); // 최대 바퀴 속도 이상으로 못돌게 설정.
+    vel.y = std::max(-maxSpeed, std::min(maxSpeed, (int)vel.y));
 
-    vel.x = vel1, vel.y = vel2;
-    RCLCPP_INFO(node->get_logger(), "에러 : %d 왼쪽속도 : %d, 오른쪽속도 : %d", error, vel1, vel2);
+    RCLCPP_INFO(node->get_logger(), "에러 : %d 왼쪽속도 : %.1lf, 오른쪽속도 : %.1lf", error, vel.x, vel.y);
     mypub->publish(vel);
 }
 
 int main(int argc, char* argv[]){
     rclcpp::init(argc, argv);
+    geometry_msgs::msg::Vector3 vel;
     vel.x = 0;
     vel.y = 0;
     vel.z = 0;
@@ -56,7 +53,7 @@ int main(int argc, char* argv[]){
     auto mypub = node->create_publisher<geometry_msgs::msg::Vector3>("topic_dxlpub", qos_profile);
 
     std::function<void(const std_msgs::msg::Int32::SharedPtr msg)> fn;
-    fn = std::bind(error_callback, node, mypub, _1);
+    fn = std::bind(error_callback, node, mypub, vel, _1);
     auto sub = node->create_subscription<std_msgs::msg::Int32>("line_tracer/error", qos_profile, fn);
 
     rclcpp::spin(node);
